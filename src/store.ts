@@ -76,12 +76,16 @@ export function useStore() {
 
   const loadUserData = async (uid: string) => {
     try {
-      // Load profile/settings
-      const { data: userData } = await supabase
+      // Upsert: cria registro do usuário se não existir
+      const { data: userData, error: userError } = await supabase
         .from('users')
+        .upsert({ id: uid }, { onConflict: 'id', ignoreDuplicates: true })
         .select('*')
-        .eq('id', uid)
         .single();
+
+      if (userError && userError.code !== 'PGRST116') {
+        console.warn('Tabela users pode não existir ainda:', userError.message);
+      }
 
       if (userData) {
         console.log("Loaded userData from Supabase:", userData);
@@ -91,10 +95,14 @@ export function useStore() {
       }
 
       // Load goals
-      const { data: goalsData } = await supabase
+      const { data: goalsData, error: goalsError } = await supabase
         .from('goals')
         .select('data')
         .eq('user_id', uid);
+
+      if (goalsError) {
+        console.warn('Tabela goals pode não existir ainda:', goalsError.message);
+      }
 
       if (goalsData) {
         setGoals(goalsData.map((g: any) => g.data as Goal));
@@ -121,14 +129,11 @@ export function useStore() {
   const handleSetProfile = useCallback(async (newProfile: Profile) => {
     setProfile(newProfile);
     if (!userId) return;
-    const { data, error, status } = await supabase.from('users').update({ profile: newProfile }).eq('id', userId).select();
-    console.log("Supabase profile update response:", { data, error, status });
+    const { error } = await supabase
+      .from('users')
+      .upsert({ id: userId, profile: newProfile }, { onConflict: 'id' });
     if (error) {
       console.error('Failed to save profile:', error);
-      alert('Erro ao salvar no banco de dados: ' + error.message);
-    } else if (!data || data.length === 0) {
-      console.warn('Profile update succeeded but no rows were updated (possible RLS issue).');
-      alert('Aviso: As alterações parecem não ter sido salvas no banco de dados (erro de permissão/RLS).');
     }
   }, [userId]);
 
@@ -136,7 +141,9 @@ export function useStore() {
   const handleSetSettings = useCallback(async (newSettings: Settings) => {
     setSettings(newSettings);
     if (!userId) return;
-    await supabase.from('users').update({ settings: newSettings }).eq('id', userId);
+    await supabase
+      .from('users')
+      .upsert({ id: userId, settings: newSettings }, { onConflict: 'id' });
   }, [userId]);
 
   // Sync goals to Supabase
