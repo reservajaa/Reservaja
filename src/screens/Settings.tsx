@@ -16,7 +16,7 @@ import {
   HelpCircle 
 } from 'lucide-react';
 import { Button, Input } from '../components/ui';
-import { BANKS_BASE, cleanImageUrl } from '../utils/banks';
+import { BANKS_BASE, cleanImageUrl, compressImage } from '../utils/banks';
 import { v4 as uuidv4 } from 'uuid';
 
 interface SettingsScreenProps {
@@ -92,29 +92,24 @@ export function SettingsScreen({
     }
   };
 
-  const handleBankFileUpload = (bankId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBankFileUpload = async (bankId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2.5 * 1024 * 1024) {
-      alert('A imagem é muito grande. Escolha uma imagem de até 2.5 MB.');
-      return;
+    try {
+      const base64 = await compressImage(file, 180, 180);
+      setCustomBanks(prev => ({
+        ...prev,
+        [bankId]: base64,
+      }));
+      setBankErrors(prev => {
+        const copy = { ...prev };
+        delete copy[bankId];
+        return copy;
+      });
+    } catch (err) {
+      console.error('Erro ao comprimir imagem:', err);
+      alert('Não foi possível processar a imagem.');
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      if (base64) {
-        setCustomBanks(prev => ({
-          ...prev,
-          [bankId]: base64,
-        }));
-        setBankErrors(prev => {
-          const copy = { ...prev };
-          delete copy[bankId];
-          return copy;
-        });
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
   };
 
@@ -131,22 +126,17 @@ export function SettingsScreen({
     });
   };
 
-  const handleExtraBankFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExtraBankFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2.5 * 1024 * 1024) {
-      alert('A imagem é muito grande. Escolha uma imagem de até 2.5 MB.');
-      return;
+    try {
+      const base64 = await compressImage(file, 180, 180);
+      setNewBankLogo(base64);
+      setNewBankLogoError(false);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem:', err);
+      alert('Não foi possível processar a imagem.');
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      if (base64) {
-        setNewBankLogo(base64);
-        setNewBankLogoError(false);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
   };
 

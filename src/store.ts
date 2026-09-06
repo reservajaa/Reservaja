@@ -25,7 +25,52 @@ export function useStore() {
 
   // Listen to Supabase auth state
   useEffect(() => {
-    let mounted = true;
+    let realtimeChannel: any = null;
+
+    const setupRealtime = (uid: string) => {
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
+      realtimeChannel = supabase
+        .channel(`user-sync-${uid}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'users',
+            filter: `id=eq.${uid}`,
+          },
+          (payload) => {
+            const newRow = payload.new as any;
+            if (newRow?.profile) {
+              setProfile(prev => ({ ...defaultProfile, ...newRow.profile }));
+            }
+            if (newRow?.settings) {
+              setSettings(prev => ({ ...defaultSettings, ...newRow.settings }));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'goals',
+            filter: `user_id=eq.${uid}`,
+          },
+          async () => {
+            const { data: goalsData } = await supabase
+              .from('goals')
+              .select('data')
+              .eq('user_id', uid);
+            if (goalsData) {
+              setGoals(goalsData.map((g: any) => g.data as Goal));
+            }
+          }
+        )
+        .subscribe();
+    };
 
     const initializeAuth = async () => {
       try {
@@ -39,6 +84,7 @@ export function useStore() {
           setIsAuthenticated(true);
           setUserEmail(session.user.email ?? null);
           setUserId(session.user.id);
+          setupRealtime(session.user.id);
           await loadUserData(session.user.id);
         }
       } catch (err) {
@@ -50,14 +96,19 @@ export function useStore() {
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') return; // Handled by initializeAuth
+      if (event === 'INITIAL_SESSION') return;
       
       if (session?.user) {
         setIsAuthenticated(true);
         setUserEmail(session.user.email ?? null);
         setUserId(session.user.id);
+        setupRealtime(session.user.id);
         await loadUserData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        if (realtimeChannel) {
+          supabase.removeChannel(realtimeChannel);
+          realtimeChannel = null;
+        }
         setIsAuthenticated(false);
         setUserEmail(null);
         setUserId(null);
@@ -71,38 +122,50 @@ export function useStore() {
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
     };
   }, []);
 
   const loadUserData = async (uid: string) => {
     try {
-      // Upsert: cria registro do usuário se não existir
-      const { data: userData, error: userError } = await supabase
+      // 1. Tentar ler dados existentes do usuário
+      const { data: existingUser, error: userError } = await supabase
         .from('users')
-        .upsert({ id: uid }, { onConflict: 'id', ignoreDuplicates: true })
         .select('*')
-        .single();
+        .eq('id', uid)
+        .maybeSingle();
 
-      if (userError && userError.code !== 'PGRST116') {
-        console.warn('Tabela users pode não existir ainda:', userError.message);
+      let userData = existingUser;
+
+      // 2. Se o usuário ainda não tiver registro na tabela users, cria o registro inicial
+      if (!existingUser && !userError) {
+        const { data: createdUser } = await supabase
+          .from('users')
+          .insert({ id: uid, profile: defaultProfile, settings: defaultSettings })
+          .select('*')
+          .maybeSingle();
+        userData = createdUser;
       }
 
       if (userData) {
-        console.log("Loaded userData from Supabase:", userData);
-        if (userData.profile) setProfile({ ...defaultProfile, ...userData.profile });
-        if (userData.settings) setSettings({ ...defaultSettings, ...userData.settings });
-        if (userData.created_at) setUserCreatedAt(userData.created_at);
+        if (userData.profile) {
+          setProfile(prev => ({ ...defaultProfile, ...userData.profile }));
+        }
+        if (userData.settings) {
+          setSettings(prev => ({ ...defaultSettings, ...userData.settings }));
+        }
+        if (userData.created_at) {
+          setUserCreatedAt(userData.created_at);
+        }
       }
 
-      // Load goals
+      // 3. Carregar metas
       const { data: goalsData, error: goalsError } = await supabase
         .from('goals')
         .select('data')
         .eq('user_id', uid);
-
-      if (goalsError) {
-        console.warn('Tabela goals pode não existir ainda:', goalsError.message);
-      }
 
       if (goalsData) {
         setGoals(goalsData.map((g: any) => g.data as Goal));
@@ -113,6 +176,27 @@ export function useStore() {
       setIsLoaded(true);
     }
   };
+
+  // Sincronização automática quando o aplicativo ganha foco (ao alternar abas ou desbloquear celular)
+  useEffect(() => {
+    if (!userId) return;
+
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        loadUserData(userId);
+      }
+    };
+
+    window.addEventListener('focus', handleSync);
+    window.addEventListener('online', handleSync);
+    document.addEventListener('visibilitychange', handleSync);
+
+    return () => {
+      window.removeEventListener('focus', handleSync);
+      window.removeEventListener('online', handleSync);
+      document.removeEventListener('visibilitychange', handleSync);
+    };
+  }, [userId]);
 
   // Apply theme
   useEffect(() => {
@@ -129,11 +213,15 @@ export function useStore() {
   const handleSetProfile = useCallback(async (newProfile: Profile) => {
     setProfile(newProfile);
     if (!userId) return;
-    const { error } = await supabase
-      .from('users')
-      .upsert({ id: userId, profile: newProfile }, { onConflict: 'id' });
-    if (error) {
-      console.error('Failed to save profile:', error);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .upsert({ id: userId, profile: newProfile }, { onConflict: 'id' });
+      if (error) {
+        console.error('Failed to save profile:', error);
+      }
+    } catch (err) {
+      console.error('Erro de rede ao salvar perfil:', err);
     }
   }, [userId]);
 
@@ -141,9 +229,13 @@ export function useStore() {
   const handleSetSettings = useCallback(async (newSettings: Settings) => {
     setSettings(newSettings);
     if (!userId) return;
-    await supabase
-      .from('users')
-      .upsert({ id: userId, settings: newSettings }, { onConflict: 'id' });
+    try {
+      await supabase
+        .from('users')
+        .upsert({ id: userId, settings: newSettings }, { onConflict: 'id' });
+    } catch (err) {
+      console.error('Erro ao salvar configurações:', err);
+    }
   }, [userId]);
 
   // Sync goals to Supabase
@@ -151,7 +243,6 @@ export function useStore() {
     setGoals(newGoals);
     if (!userId) return;
     try {
-      // Delete all and re-insert (simple sync strategy)
       await supabase.from('goals').delete().eq('user_id', userId);
       if (newGoals.length > 0) {
         await supabase.from('goals').insert(
