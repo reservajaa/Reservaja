@@ -664,7 +664,7 @@ export function Home({
         onClose={closeGoalModal}
         title={editingGoal ? "Editar Meta" : "Nova Meta"}
       >
-        <form onSubmit={handleSaveGoal} className="space-y-4">
+        <form onSubmit={handleSaveGoal} noValidate className="space-y-4">
           <Input
             label="Nome da meta"
             placeholder="Ex: Fone Bluetooth"
@@ -810,7 +810,7 @@ export function Home({
               <div className="flex-1 relative">
                 <Input
                   label=""
-                  type="url"
+                  type="text"
                   placeholder="Link da loja ou link da imagem..."
                   value={goalForm.productUrl.startsWith('data:') ? '[Imagem Carregada do Computador/Celular]' : goalForm.productUrl}
                   onChange={(e) => handleProductUrlChange(e.target.value)}
@@ -851,7 +851,7 @@ export function Home({
               <div className="flex-1">
                 <Input
                   label=""
-                  type="url"
+                  type="text"
                   placeholder="Cole o link da imagem ou escolha um arquivo..."
                   value={goalForm.imageUrl.startsWith('data:') ? '[Imagem Selecionada do Computador/Celular]' : goalForm.imageUrl}
                   onChange={(e) => handleImageUrlChange(e.target.value)}
