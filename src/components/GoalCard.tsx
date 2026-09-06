@@ -141,7 +141,7 @@ export function GoalCard({
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Total:{" "}
               <span className="font-medium text-gray-900 dark:text-gray-200">
-                {formatCurrency(goal.targetAmount, currency)}
+                {formatCurrency(goal.savedAmount, currency)}
               </span>
               {goal.installments && goal.installments > 1 && goal.installmentValue ? (
                 <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
