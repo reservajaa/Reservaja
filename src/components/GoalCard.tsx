@@ -74,11 +74,18 @@ export function GoalCard({
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {goal.imageUrl ? (
-          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-700">
+          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
             <img
               src={goal.imageUrl}
               alt={goal.name}
+              referrerPolicy="no-referrer"
               className="h-full w-full object-cover"
+              onError={(e) => {
+                const parent = (e.target as HTMLElement).parentElement;
+                if (parent) {
+                  parent.innerHTML = '<span class="text-2xl">🎯</span>';
+                }
+              }}
             />
           </div>
         ) : (

@@ -1,15 +1,15 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Goal, Profile, GoalShortcut, DEFAULT_GOAL_SHORTCUTS } from "../types";
 import { formatCurrency } from "../utils";
 import { GoalCard } from "../components/GoalCard";
 import { GoalShortcuts } from "../components/GoalShortcuts";
-import { Plus, Search, ArrowUpDown, Wallet } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Wallet, Image as ImageIcon, X } from "lucide-react";
 import { Button, Input } from "../components/ui";
 import { motion } from "motion/react";
 import { Modal } from "../components/Modal";
 import confetti from "canvas-confetti";
 import logoImg from "../assets/images/reserva_ja_logo_1782703217853.jpg";
-import { BANKS_BASE, getBankLogoUrl } from "../utils/banks";
+import { BANKS_BASE, getBankLogoUrl, cleanImageUrl, compressImage } from "../utils/banks";
 
 interface HomeProps {
   goals: Goal[];
@@ -91,6 +91,38 @@ export function Home({
   const [shortcutAction, setShortcutAction] = useState<"add" | "remove">("add");
   const [shortcutGoalId, setShortcutGoalId] = useState("");
   const [shortcutAmount, setShortcutAmount] = useState("");
+
+  const goalImageInputRef = useRef<HTMLInputElement>(null);
+  const productImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGoalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await compressImage(file, 480, 480);
+      setGoalForm((prev) => ({ ...prev, imageUrl: base64 }));
+    } catch (err) {
+      console.error("Erro ao processar imagem:", err);
+      alert("Não foi possível carregar a imagem selecionada.");
+    }
+    e.target.value = "";
+  };
+
+  const handleProductUrlChange = (val: string) => {
+    const cleaned = cleanImageUrl(val);
+    const isDirectImage = cleaned.match(/\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i) || (val.includes("google.") && val.includes("imgurl="));
+    setGoalForm((prev) => {
+      if (isDirectImage && !prev.imageUrl) {
+        return { ...prev, productUrl: cleaned, imageUrl: cleaned };
+      }
+      return { ...prev, productUrl: cleaned };
+    });
+  };
+
+  const handleImageUrlChange = (val: string) => {
+    const cleaned = cleanImageUrl(val);
+    setGoalForm((prev) => ({ ...prev, imageUrl: cleaned }));
+  };
 
   const fetchProductData = async (url: string) => {
     if (!url) return;
@@ -762,34 +794,113 @@ export function Home({
               ))}
             </div>
           </div>
-          <div className="relative">
-            <Input
-              label="URL do Produto (opcional)"
-              type="url"
-              placeholder="https://..."
-              value={goalForm.productUrl}
-              onChange={(e) =>
-                setGoalForm((prev) => ({ ...prev, productUrl: e.target.value }))
-              }
-              onBlur={() => {
-                if (goalForm.productUrl) {
-                  fetchProductData(goalForm.productUrl);
-                }
-              }}
-            />
-            {isFetchingUrl && (
-              <div className="absolute right-3 top-9 h-4 w-4 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
+          {/* URL do Produto */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              URL do Produto (opcional)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                ref={productImageInputRef}
+                className="hidden"
+                onChange={handleGoalImageUpload}
+              />
+              <div className="flex-1 relative">
+                <Input
+                  label=""
+                  type="url"
+                  placeholder="Link da loja ou link da imagem..."
+                  value={goalForm.productUrl.startsWith('data:') ? '[Imagem Carregada do Computador/Celular]' : goalForm.productUrl}
+                  onChange={(e) => handleProductUrlChange(e.target.value)}
+                  onBlur={() => {
+                    if (goalForm.productUrl && !goalForm.productUrl.startsWith('data:')) {
+                      fetchProductData(goalForm.productUrl);
+                    }
+                  }}
+                />
+                {isFetchingUrl && (
+                  <div className="absolute right-3 top-3.5 h-4 w-4 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => productImageInputRef.current?.click()}
+                className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors shrink-0"
+                title="Adicionar foto do produto do computador ou celular"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* URL da Imagem */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              URL da Imagem da Meta (opcional)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                ref={goalImageInputRef}
+                className="hidden"
+                onChange={handleGoalImageUpload}
+              />
+              <div className="flex-1">
+                <Input
+                  label=""
+                  type="url"
+                  placeholder="Cole o link da imagem ou escolha um arquivo..."
+                  value={goalForm.imageUrl.startsWith('data:') ? '[Imagem Selecionada do Computador/Celular]' : goalForm.imageUrl}
+                  onChange={(e) => handleImageUrlChange(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => goalImageInputRef.current?.click()}
+                className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors shrink-0"
+                title="Enviar imagem do computador ou celular"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Preview da Imagem da Meta */}
+            {goalForm.imageUrl && (
+              <div className="mt-2.5 flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                <div className="h-14 w-14 shrink-0 rounded-lg bg-white dark:bg-gray-800 overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                  <img
+                    src={goalForm.imageUrl}
+                    alt="Preview da meta"
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '';
+                      (e.target as HTMLImageElement).alt = 'Falha ao carregar';
+                    }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                    Foto da Meta Selecionada
+                  </p>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    {goalForm.imageUrl.startsWith('data:') ? 'Arquivo do computador/celular' : goalForm.imageUrl}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGoalForm(prev => ({ ...prev, imageUrl: '' }))}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Remover imagem"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
-          <Input
-            label="URL da Imagem (opcional)"
-            type="url"
-            placeholder="https://..."
-            value={goalForm.imageUrl}
-            onChange={(e) =>
-              setGoalForm((prev) => ({ ...prev, imageUrl: e.target.value }))
-            }
-          />
 
           {/* Atalhos Rápidos da Meta */}
           <div className="pt-1">
