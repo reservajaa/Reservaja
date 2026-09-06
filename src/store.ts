@@ -25,7 +25,15 @@ export function useStore() {
 
   // Listen to Supabase auth state
   useEffect(() => {
+    let isMounted = true;
     let realtimeChannel: any = null;
+
+    // Timeout de segurança: se a rede estiver lenta ou falhar, sai do "Carregando..." em no máximo 2.5 segundos
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        setIsLoaded(true);
+      }
+    }, 2500);
 
     const setupRealtime = (uid: string) => {
       if (realtimeChannel) {
@@ -76,7 +84,7 @@ export function useStore() {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!mounted) return;
+        if (!isMounted) return;
         
         if (error || !session) {
           setIsLoaded(true);
@@ -89,7 +97,8 @@ export function useStore() {
         }
       } catch (err) {
         console.error("Error fetching initial session:", err);
-        if (mounted) setIsLoaded(true);
+      } finally {
+        if (isMounted) setIsLoaded(true);
       }
     };
 
@@ -120,7 +129,8 @@ export function useStore() {
     });
 
     return () => {
-      mounted = false;
+      isMounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
       if (realtimeChannel) {
         supabase.removeChannel(realtimeChannel);
@@ -130,26 +140,21 @@ export function useStore() {
 
   const loadUserData = async (uid: string) => {
     try {
-      // 1. Tentar ler dados existentes do usuário
-      const { data: existingUser, error: userError } = await supabase
+      const userPromise = supabase
         .from('users')
         .select('*')
         .eq('id', uid)
         .maybeSingle();
 
-      let userData = existingUser;
+      const goalsPromise = supabase
+        .from('goals')
+        .select('data')
+        .eq('user_id', uid);
 
-      // 2. Se o usuário ainda não tiver registro na tabela users, cria o registro inicial
-      if (!existingUser && !userError) {
-        const { data: createdUser } = await supabase
-          .from('users')
-          .insert({ id: uid, profile: defaultProfile, settings: defaultSettings })
-          .select('*')
-          .maybeSingle();
-        userData = createdUser;
-      }
+      const [userRes, goalsRes] = await Promise.allSettled([userPromise, goalsPromise]);
 
-      if (userData) {
+      if (userRes.status === 'fulfilled' && userRes.value.data) {
+        const userData = userRes.value.data;
         if (userData.profile) {
           setProfile(prev => ({ ...defaultProfile, ...userData.profile }));
         }
@@ -159,16 +164,16 @@ export function useStore() {
         if (userData.created_at) {
           setUserCreatedAt(userData.created_at);
         }
+      } else if (userRes.status === 'fulfilled' && !userRes.value.data && !userRes.value.error) {
+        // Se ainda não existir linha na tabela users, cria o registro inicial
+        supabase
+          .from('users')
+          .insert({ id: uid, profile: defaultProfile, settings: defaultSettings })
+          .then();
       }
 
-      // 3. Carregar metas
-      const { data: goalsData, error: goalsError } = await supabase
-        .from('goals')
-        .select('data')
-        .eq('user_id', uid);
-
-      if (goalsData) {
-        setGoals(goalsData.map((g: any) => g.data as Goal));
+      if (goalsRes.status === 'fulfilled' && goalsRes.value.data) {
+        setGoals(goalsRes.value.data.map((g: any) => g.data as Goal));
       }
     } catch (e) {
       console.error('Failed to load user data', e);
