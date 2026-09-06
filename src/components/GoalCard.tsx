@@ -152,8 +152,9 @@ export function GoalCard({
                     style={{ backgroundColor: bank.color + "22", color: bank.color, border: `1px solid ${bank.color}44` }}
                   >
                     <img
-                      src={getBankLogoUrl(bank.id, customBanks)}
+                      src={getBankLogoUrl(bank.id, customBanks, extraBanks)}
                       alt={bank.name}
+                      referrerPolicy="no-referrer"
                       className="h-4 w-4 object-contain rounded-sm"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />

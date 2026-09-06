@@ -1,9 +1,22 @@
 import React, { useRef, useState } from 'react';
 import { Settings as SettingsType, Profile, CustomBankEntry } from '../types';
 import { exportData } from '../utils';
-import { Moon, Sun, Monitor, Download, Upload, Info, Plus, Trash2 } from 'lucide-react';
+import { 
+  Moon, 
+  Sun, 
+  Monitor, 
+  Download, 
+  Upload, 
+  Info, 
+  Plus, 
+  Trash2, 
+  RotateCcw, 
+  AlertCircle, 
+  Image as ImageIcon, 
+  HelpCircle 
+} from 'lucide-react';
 import { Button, Input } from '../components/ui';
-import { BANKS_BASE } from '../utils/banks';
+import { BANKS_BASE, cleanImageUrl } from '../utils/banks';
 import { v4 as uuidv4 } from 'uuid';
 
 interface SettingsScreenProps {
@@ -29,6 +42,10 @@ export function SettingsScreen({
   const [activeTab, setActiveTab] = useState<'geral' | 'bancos'>('geral');
   const [customBanks, setCustomBanks] = useState<Record<string, string>>(profile?.customBanks || {});
   const [extraBanks, setExtraBanks] = useState<CustomBankEntry[]>(profile?.extraBanks || []);
+  const [bankErrors, setBankErrors] = useState<Record<string, boolean>>({});
+  const [newBankLogoError, setNewBankLogoError] = useState(false);
+  const bankFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const extraBankFileInputRef = useRef<HTMLInputElement>(null);
   const [saved, setSaved] = useState(false);
 
   // New bank form state
@@ -75,6 +92,64 @@ export function SettingsScreen({
     }
   };
 
+  const handleBankFileUpload = (bankId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2.5 * 1024 * 1024) {
+      alert('A imagem é muito grande. Escolha uma imagem de até 2.5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setCustomBanks(prev => ({
+          ...prev,
+          [bankId]: base64,
+        }));
+        setBankErrors(prev => {
+          const copy = { ...prev };
+          delete copy[bankId];
+          return copy;
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleResetBank = (bankId: string) => {
+    setCustomBanks(prev => {
+      const copy = { ...prev };
+      delete copy[bankId];
+      return copy;
+    });
+    setBankErrors(prev => {
+      const copy = { ...prev };
+      delete copy[bankId];
+      return copy;
+    });
+  };
+
+  const handleExtraBankFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2.5 * 1024 * 1024) {
+      alert('A imagem é muito grande. Escolha uma imagem de até 2.5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setNewBankLogo(base64);
+        setNewBankLogoError(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleAddExtraBank = () => {
     if (!newBankName.trim() || !newBankLogo.trim()) {
       alert('Preencha o nome e a URL da logo do banco.');
@@ -84,7 +159,7 @@ export function SettingsScreen({
     const newBank = {
       id,
       name: newBankName.trim(),
-      logoUrl: newBankLogo.trim(),
+      logoUrl: cleanImageUrl(newBankLogo.trim()),
       color: newBankColor,
     };
     
@@ -102,6 +177,7 @@ export function SettingsScreen({
     setNewBankName('');
     setNewBankLogo('');
     setNewBankColor('#6366f1');
+    setNewBankLogoError(false);
   };
 
   const handleRemoveExtraBank = (id: string) => {
@@ -247,46 +323,147 @@ export function SettingsScreen({
       ) : (
         <form onSubmit={handleSaveBanks} className="space-y-6">
 
+          {/* ── Guia de instruções ── */}
+          <div className="rounded-2xl bg-blue-50/70 border border-blue-200/60 p-4 dark:bg-blue-900/20 dark:border-blue-800/50 text-sm space-y-2.5">
+            <div className="flex items-center gap-2 font-semibold text-blue-900 dark:text-blue-200">
+              <HelpCircle className="w-5 h-5 shrink-0 text-blue-600 dark:text-blue-400" />
+              <span>Dicas para adicionar ou alterar imagens dos bancos</span>
+            </div>
+            <ul className="text-xs text-blue-800/90 dark:text-blue-300 list-disc list-inside space-y-1.5 leading-relaxed">
+              <li>
+                <strong>Fazer upload direto (Recomendado):</strong> Clique no botão <strong>📁 Enviar Foto</strong> para selecionar um arquivo PNG, JPG ou SVG direto do seu computador/celular.
+              </li>
+              <li>
+                <strong>Ao pegar no Google:</strong> Clique com o <u>botão direito</u> na imagem no Google e selecione <strong>"Copiar endereço da imagem"</strong> (não copie o link da página do site).
+              </li>
+              <li>
+                <strong>Voltar ao original:</strong> Deixe o campo em branco ou clique no botão <strong>🔄 Padrão</strong> para usar a logo oficial do aplicativo.
+              </li>
+            </ul>
+          </div>
+
           {/* ── Bancos padrão ── */}
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800 space-y-4">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">Logos dos bancos padrão</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Personalize as URLs das imagens de cada banco. Deixe em branco para usar a imagem padrão.
+              Personalize a imagem de cada banco colando o link direto ou enviando uma imagem do computador.
             </p>
-            {BANKS_BASE.map(bank => (
-              <div key={bank.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
-                <div className="flex items-center gap-3 w-full sm:w-1/3 shrink-0">
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center p-1 shadow-sm" style={{ border: `1px solid ${bank.color}44` }}>
-                    <img 
-                      src={customBanks?.[bank.id] || bank.logoUrl} 
-                      alt={bank.name} 
-                      className="max-h-full max-w-full object-contain"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      onLoad={(e) => { (e.target as HTMLImageElement).style.display = 'block'; }}
-                    />
+            {BANKS_BASE.map(bank => {
+              const currentUrl = customBanks?.[bank.id] || bank.logoUrl;
+              const hasCustom = Boolean(customBanks?.[bank.id]);
+              const hasError = Boolean(bankErrors[bank.id]);
+
+              return (
+                <div key={bank.id} className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex items-center gap-3 w-full sm:w-1/3 shrink-0">
+                      <div 
+                        className={`h-11 w-11 shrink-0 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center p-1 shadow-sm relative overflow-hidden transition-all ${
+                          hasError ? 'border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20' : ''
+                        }`} 
+                        style={{ border: hasError ? undefined : `1px solid ${bank.color}44` }}
+                      >
+                        {hasError ? (
+                          <AlertCircle className="w-5 h-5 text-amber-500" title="Falha ao carregar imagem" />
+                        ) : (
+                          <img 
+                            src={currentUrl} 
+                            alt={bank.name} 
+                            referrerPolicy="no-referrer"
+                            className="max-h-full max-w-full object-contain"
+                            onError={() => {
+                              setBankErrors(prev => ({ ...prev, [bank.id]: true }));
+                            }}
+                            onLoad={() => {
+                              setBankErrors(prev => {
+                                if (!prev[bank.id]) return prev;
+                                const copy = { ...prev };
+                                delete copy[bank.id];
+                                return copy;
+                              });
+                            }}
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 block truncate">{bank.name}</span>
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {hasCustom ? 'Personalizada' : 'Padrão'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex items-center gap-2 w-full">
+                      <div className="flex-1">
+                        <Input
+                          label=""
+                          value={customBanks?.[bank.id] || ''}
+                          placeholder="Cole a URL da imagem ou deixe vazio para padrão"
+                          onChange={(e) => {
+                            const cleaned = cleanImageUrl(e.target.value);
+                            setCustomBanks(prev => ({
+                              ...prev,
+                              [bank.id]: cleaned
+                            }));
+                            setBankErrors(prev => {
+                              const copy = { ...prev };
+                              delete copy[bank.id];
+                              return copy;
+                            });
+                          }}
+                        />
+                      </div>
+
+                      {/* Botão Upload do computador */}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={el => { bankFileInputRefs.current[bank.id] = el; }}
+                        className="hidden"
+                        onChange={(e) => handleBankFileUpload(bank.id, e)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => bankFileInputRefs.current[bank.id]?.click()}
+                        className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors shrink-0"
+                        title="Enviar imagem do computador"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                      </button>
+
+                      {/* Botão Restaurar Padrão */}
+                      {hasCustom && (
+                        <button
+                          type="button"
+                          onClick={() => handleResetBank(bank.id)}
+                          className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-amber-50 hover:border-amber-200 dark:hover:bg-amber-900/20 text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 transition-colors shrink-0"
+                          title="Restaurar imagem padrão original"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{bank.name}</span>
+
+                  {/* Mensagem de erro caso a URL não carregue */}
+                  {hasError && (
+                    <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Não foi possível carregar a imagem deste link. Certifique-se de copiar o <strong>"Endereço da imagem"</strong> (.png, .jpg) ou clique no ícone <ImageIcon className="w-3.5 h-3.5 inline mx-0.5" /> para enviar do seu computador.
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 w-full">
-                  <Input
-                    label=""
-                    value={customBanks?.[bank.id] || ''}
-                    placeholder={`Padrão`}
-                    onChange={(e) => setCustomBanks(prev => ({
-                      ...prev,
-                      [bank.id]: e.target.value
-                    }))}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* ── Bancos extras ── */}
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800 space-y-4">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">Bancos extras (personalizados)</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Adicione bancos que não constam na lista padrão. Eles aparecerão na seleção ao criar ou editar uma meta.
+              Adicione outros bancos que não constam na lista padrão. Eles aparecerão na seleção ao criar ou editar uma meta.
             </p>
 
             {/* List of extra banks */}
@@ -301,13 +478,14 @@ export function SettingsScreen({
                       <img
                         src={bank.logoUrl}
                         alt={bank.name}
+                        referrerPolicy="no-referrer"
                         className="max-h-full max-w-full object-contain"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{bank.name}</p>
-                      <p className="text-xs text-gray-400 truncate">{bank.logoUrl}</p>
+                      <p className="text-xs text-gray-400 truncate">{bank.logoUrl.startsWith('data:') ? '[Imagem do Computador]' : bank.logoUrl}</p>
                     </div>
                     <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: bank.color }} title={bank.color} />
                     <button
@@ -338,12 +516,36 @@ export function SettingsScreen({
                   value={newBankName}
                   onChange={e => setNewBankName(e.target.value)}
                 />
-                <Input
-                  label="URL da logo"
-                  placeholder="https://..."
-                  value={newBankLogo}
-                  onChange={e => setNewBankLogo(e.target.value)}
-                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Input
+                        label="URL da logo ou Enviar Imagem"
+                        placeholder="https://... ou escolha um arquivo"
+                        value={newBankLogo.startsWith('data:') ? '[Imagem Selecionada do Computador]' : newBankLogo}
+                        onChange={e => {
+                          setNewBankLogo(cleanImageUrl(e.target.value));
+                          setNewBankLogoError(false);
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={extraBankFileInputRef}
+                      className="hidden"
+                      onChange={handleExtraBankFileUpload}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => extraBankFileInputRef.current?.click()}
+                      className="mt-6 p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors shrink-0"
+                      title="Enviar imagem do computador"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex-1">
@@ -366,9 +568,18 @@ export function SettingsScreen({
                       className="h-10 w-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center p-1 shadow-sm overflow-hidden"
                       style={{ border: `2px solid ${newBankColor}` }}
                     >
-                      <img src={newBankLogo} alt="preview" className="max-h-full max-w-full object-contain"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+                      {newBankLogoError ? (
+                        <AlertCircle className="w-5 h-5 text-amber-500" title="Link inválido" />
+                      ) : (
+                        <img 
+                          src={newBankLogo} 
+                          alt="preview" 
+                          referrerPolicy="no-referrer"
+                          className="max-h-full max-w-full object-contain"
+                          onError={() => setNewBankLogoError(true)}
+                          onLoad={() => setNewBankLogoError(false)}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
@@ -394,3 +605,4 @@ export function SettingsScreen({
     </div>
   );
 }
+

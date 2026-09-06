@@ -73,12 +73,50 @@ export const BANKS_BASE = [
   },
 ];
 
+import { CustomBankEntry } from '../types';
+
 // Alias para compatibilidade
 export const BANKS = BANKS_BASE;
 
-export function getBankLogoUrl(bankId: string, customBanks?: Record<string, string>): string {
-  const bank = BANKS_BASE.find(b => b.id === bankId);
+export function cleanImageUrl(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+
+  // Tratar links de imagem do Google (ex: https://www.google.com/imgres?imgurl=...)
+  if (trimmed.includes('google.') && trimmed.includes('imgurl=')) {
+    try {
+      const urlObj = new URL(trimmed);
+      const imgurl = urlObj.searchParams.get('imgurl');
+      if (imgurl) {
+        return decodeURIComponent(imgurl);
+      }
+    } catch {
+      const match = trimmed.match(/[?&]imgurl=([^&]+)/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]);
+      }
+    }
+  }
+
+  // Tratar links de compartilhamento do Google Drive
+  if (trimmed.includes('drive.google.com') && trimmed.includes('/file/d/')) {
+    const match = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+    }
+  }
+
+  return trimmed;
+}
+
+export function getBankLogoUrl(
+  bankId: string, 
+  customBanks?: Record<string, string>,
+  extraBanks?: CustomBankEntry[]
+): string {
+  if (customBanks?.[bankId]) return customBanks[bankId];
+  const bank = BANKS_BASE.find(b => b.id === bankId) || extraBanks?.find(b => b.id === bankId);
   if (!bank) return '';
-  return customBanks?.[bankId] || bank.logoUrl;
+  return bank.logoUrl;
 }
 

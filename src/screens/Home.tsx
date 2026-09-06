@@ -745,8 +745,9 @@ export function Home({
                 >
                   <div className="h-8 w-8 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center shadow-sm overflow-hidden p-0.5">
                     <img
-                      src={getBankLogoUrl(bank.id, profile.customBanks)}
+                      src={getBankLogoUrl(bank.id, profile.customBanks, profile.extraBanks)}
                       alt={bank.name}
+                      referrerPolicy="no-referrer"
                       className="h-full w-full object-contain"
                       onError={(e) => {
                         const el = e.target as HTMLImageElement;
